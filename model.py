@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from keras.layers import Dense, Flatten, Lambda, Activation, MaxPooling2D
+from keras.layers import Dense, Flatten, Lambda, Activation, MaxPooling2D, Dropout
 from keras.layers.convolutional import Convolution2D
 from keras.models import Sequential
 from keras.optimizers import Adam
@@ -23,6 +23,7 @@ learning_rate = 1e-4
 relu = 'relu'
 model_name = 'model.json'
 weights_name = 'model.h5'
+keep_prob = 0.5
 
 def next_image_batch(batch_size=64):
     lines = []
@@ -113,6 +114,7 @@ model.add(Flatten())
 # Next, five fully connected layers
 model.add(Dense(1164))
 model.add(Activation(relu))
+model.add(Dropout(keep_prob))
 
 model.add(Dense(100))
 model.add(Activation(relu))

@@ -1,8 +1,8 @@
 # **Behavioral Cloning** 
 
-## Writeup Template
+## Project Overview
 
-### You can use this file as a template for your writeup if you want to submit it as a markdown file, but feel free to use some other method and submit a pdf if you prefer.
+### This is the third project for the first term of self driving cars by udacity.
 
 ---
 
@@ -53,6 +53,8 @@ The model.py file contains the code for training and saving the convolution neur
 ### Model Architecture and Training Strategy
 
 #### 1. An appropriate model architecture has been employed
+
+The model is based on the Nvidia famous paper
 
 My model consists of a convolution neural network with 3x3 filter sizes and depths between 32 and 128 (model.py lines 18-24) 
 
@@ -127,3 +129,7 @@ After the collection process, I had X number of data points. I then preprocessed
 I finally randomly shuffled the data set and put Y% of the data into a validation set. 
 
 I used this training data for training the model. The validation set helped determine if the model was over or under fitting. The ideal number of epochs was Z as evidenced by ... I used an adam optimizer so that manually training the learning rate wasn't necessary.
+
+# Acknowledgements:
+1. https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/Behavioral+Cloning+Cheatsheet+-+CarND.pdf
+2. https://arxiv.org/pdf/1604.07316.pdf
