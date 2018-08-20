@@ -51,21 +51,6 @@ def next_image_batch(batch_size=64):
             angle = float(data[index][3]) - float(STEERING_COEFFICIENT)
             image_files_and_angles.append((image, angle))
 
-
-        # if rnd_image == 0:
-        #     img = data.iloc[index]['left'].strip()
-        #     angle = data.iloc[index]['steering'] + STEERING_COEFFICIENT
-        #     image_files_and_angles.append((img, angle))
-
-        # elif rnd_image == 1:
-        #     img = data.iloc[index]['center'].strip()
-        #     angle = data.iloc[index]['steering']
-        #     image_files_and_angles.append((img, angle))
-        # else:
-        #     img = data.iloc[index]['right'].strip()
-        #     angle = data.iloc[index]['steering'] - STEERING_COEFFICIENT
-        #     image_files_and_angles.append((img, angle))
-
     return image_files_and_angles
 
 
