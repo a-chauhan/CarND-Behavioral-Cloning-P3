@@ -1,163 +1,166 @@
-import os
-import csv
-import cv2
+import tensorflow as tf
 import numpy as np
-
-from sklearn.model_selection import train_test_split
-
-import sklearn
-from random import shuffle
-
-from keras.models import Sequential
-from keras.layers import Flatten, Dense, Lambda, Activation, MaxPooling2D, Dropout, Cropping2D
+from keras.layers import Dense, Flatten, Lambda, Activation, MaxPooling2D
 from keras.layers.convolutional import Convolution2D
+from keras.models import Sequential
 from keras.optimizers import Adam
-
-from keras.models import Model
+import scipy.misc
 import matplotlib.pyplot as plt
+import csv
 
-# Read from the driving_log.csv file, the recorded training data
-lines = []
-with open('./data/driving_log.csv') as csvfile:
-    reader = csv.reader(csvfile)
-    for line in reader:
-        lines.append(line)
-samples = lines
+from utility import crop, flip, gamma, delete_file
+import json
+import pandas as pd
 
-learning_rate = 0.0014
+DRIVING_LOG_FILE = './data/driving_log.csv'
+IMG_PATH = './data/IMG/'
+STEERING_COEFFICIENT = 0.23
+
+epochs = 8
+samples_per_epoch = 20032
+number_of_validation_samples = 6400
+learning_rate = 1e-4
+relu = 'relu'
+model_name = 'model.json'
+weights_name = 'model.h5'
+
+def next_image_batch(batch_size=64):
+    lines = []
+    with open(DRIVING_LOG_FILE) as csvfile:
+        reader = csv.reader(csvfile)
+        for line in reader:
+            lines.append(line)
+    data = lines
+    num_of_img = len(data)
+    rnd_indices = np.random.randint(0, num_of_img, batch_size)
+
+    image_files_and_angles = []
+    for index in rnd_indices:
+        value = np.random.randint(0, 3)
+        angle = data[index][3]
+        if value == 0:
+            image = data[index][value].split('/')[-1]
+            angle = float(data[index][3]) + float(STEERING_COEFFICIENT)
+            image_files_and_angles.append((image, angle))
+        if value == 1:
+            image = data[index][value].split('/')[-1]
+            angle = float(data[index][3])
+            image_files_and_angles.append((image, angle))
+        if value == 2:
+            image = data[index][value].split('/')[-1]
+            angle = float(data[index][3]) - float(STEERING_COEFFICIENT)
+            image_files_and_angles.append((image, angle))
 
 
-train_samples, validation_samples = train_test_split(samples, test_size=0.2)
+        # if rnd_image == 0:
+        #     img = data.iloc[index]['left'].strip()
+        #     angle = data.iloc[index]['steering'] + STEERING_COEFFICIENT
+        #     image_files_and_angles.append((img, angle))
 
-# Defining the generator
-def generator(samples, batch_size=32):
-    num_samples = len(samples)
-    while 1: # Loop forever so the generator never terminates
-        shuffle(samples)
-        for offset in range(0, num_samples, batch_size):
-            batch_samples = samples[offset:offset+batch_size]
+        # elif rnd_image == 1:
+        #     img = data.iloc[index]['center'].strip()
+        #     angle = data.iloc[index]['steering']
+        #     image_files_and_angles.append((img, angle))
+        # else:
+        #     img = data.iloc[index]['right'].strip()
+        #     angle = data.iloc[index]['steering'] - STEERING_COEFFICIENT
+        #     image_files_and_angles.append((img, angle))
 
-            # images = []
-            # angles = []
-            # for batch_sample in batch_samples:
-            #     name = './data/IMG/'+batch_sample[0].split('/')[-1]
-            #     center_image = cv2.imread(name)
-            #     center_angle = float(batch_sample[3])
-            #     images.append(center_image)
-            #     angles.append(center_angle)
-            #     images.append(cv2.flip(center_image, 1))
-            #     angles.append(center_angle*-1.0)
+    return image_files_and_angles
 
-            # X_train = np.array(images)
-            # y_train = np.array(angles)
-            # print(len(angles), len(images))
-            # print(len(X_train[0].shape))
 
-            # Build the array for images and corresponding stearing angle measurement
-            images = []
-            angles = []
-            correction = 0.01
-            for batch_sample in batch_samples:
-                for i in range(3):
-                    source_path = batch_sample[i]
-                    filename = source_path.split('/')[-1]
-                    current_path = './data/IMG/' + filename
-                    image = cv2.imread(current_path)
-                    images.append(image)
-                    angle = float(batch_sample[3])
-                    if (i == 1):
-                        angle += correction
-                    elif (i == 2):
-                        angle -= correction
-                    angles.append(angle)
+def process_image(image, steering_angle, top_crop_percent=0.35, bottom_crop_percent=0.1, resize_dim=(64, 64), do_shear_prob=0.9):
 
-            # print(len(angles), len(images))
+    image = crop(image, top_crop_percent, bottom_crop_percent)
 
-            # Inverting the images and adding to the data set
-            augmented_images = []
-            augmented_angles = []
-            for image, angle in zip(images, angles):
-                augmented_images.append(image)
-                augmented_angles.append(angle)
-                augmented_images.append(cv2.flip(image, 1))
-                augmented_angles.append(angle*-1.0)
+    image, steering_angle = flip(image, steering_angle)
 
-            X_train = np.array(augmented_images)
-            y_train = np.array(augmented_angles)
+    image = gamma(image)
 
-            # X_train = np.array(images)
-            # y_train = np.array(angles)
+    image = scipy.misc.imresize(image, resize_dim)
 
-            yield sklearn.utils.shuffle(X_train, y_train)
+    return image, steering_angle
 
-# compile and train the model using the generator function
-train_generator = generator(train_samples, batch_size=32)
-validation_generator = generator(validation_samples, batch_size=32)
+def generate_next_batch(batch_size=64):
+    while True:
+        X_batch = []
+        y_batch = []
+        images = next_image_batch(batch_size)
+        for img_file, angle in images:
+            raw_image = plt.imread(IMG_PATH + img_file)
+            raw_angle = angle
+            new_image, new_angle = process_image(raw_image, raw_angle)
+            X_batch.append(new_image)
+            y_batch.append(new_angle)
 
-keep_prob = 0.5
+        assert len(X_batch) == batch_size, 'len(X_batch) == batch_size should be True'
 
-# Creating the model architecture
-# <================================================= MODEL ARCHITECTURE START =========================================================>
+        yield np.array(X_batch), np.array(y_batch)
+
+# Inspired from:  https://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf
 model = Sequential()
 
-# Preprocess incoming data, centered around zero with small standard deviation 
-# model.add(Lambda(lambda x: (x/255.0) - 0.5, input_shape=(160, 320, 3), output_shape=(160, 320, 3)))
+model.add(Lambda(lambda x: x / 127.5 - 1.0, input_shape=(64, 64, 3)))
 
-model.add(Lambda(lambda x: x/127.5 - 1.,
-        input_shape=(160, 320, 3),
-        output_shape=(160, 320, 3)))
-
-
-# Cropping the image
-model.add(Cropping2D(cropping=((50,20), (0,0)), input_shape=(160, 320, 3)))
-
-model.add(Convolution2D(3, 1, 1, border_mode='same', name='color_conv'))
-
-# Classic five convolutional, Nvidia model and additional maxpooling layers
-model.add(Convolution2D(24, 5, 5, border_mode='valid', activation='relu', subsample=(2, 2)))
+# starts with five convolutional and maxpooling layers
+model.add(Convolution2D(24, 5, 5, border_mode='same', subsample=(2, 2)))
+model.add(Activation(relu))
 model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
 
-model.add(Convolution2D(36, 5, 5, border_mode='valid', activation='relu', subsample=(2, 2)))
-model.add(Dropout(keep_prob))
-model.add(Convolution2D(48, 5, 5, border_mode='valid', activation='relu', subsample=(2, 2)))
-model.add(Dropout(keep_prob))
-model.add(Convolution2D(64, 3, 3, border_mode='valid', activation='relu', subsample=(1, 1)))
-model.add(Dropout(keep_prob))
-model.add(Convolution2D(64, 3, 3, border_mode='valid', activation='relu', subsample=(1, 1)))
-model.add(Dropout(keep_prob))
+model.add(Convolution2D(36, 5, 5, border_mode='same', subsample=(2, 2)))
+model.add(Activation(relu))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
+
+model.add(Convolution2D(48, 5, 5, border_mode='same', subsample=(2, 2)))
+model.add(Activation(relu))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
+
+model.add(Convolution2D(64, 3, 3, border_mode='same', subsample=(1, 1)))
+model.add(Activation(relu))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
+
+model.add(Convolution2D(64, 3, 3, border_mode='same', subsample=(1, 1)))
+model.add(Activation(relu))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
+
 model.add(Flatten())
 
 # Next, five fully connected layers
-model.add(Dense(1164, activation='relu'))
+model.add(Dense(1164))
+model.add(Activation(relu))
 
-model.add(Dropout(keep_prob))
-model.add(Dense(100, activation='relu'))
+model.add(Dense(100))
+model.add(Activation(relu))
 
-model.add(Dense(50, activation='relu'))
+model.add(Dense(50))
+model.add(Activation(relu))
 
-model.add(Dense(10, activation='relu'))
+model.add(Dense(10))
+model.add(Activation(relu))
 
 model.add(Dense(1))
 
 model.summary()
 
-model.compile(loss='mse', optimizer=Adam(learning_rate))
-history_object = model.fit_generator(train_generator, steps_per_epoch= len(train_samples), validation_data=validation_generator, validation_steps=len(validation_samples), epochs=5, verbose = 1)
+model.compile(optimizer=Adam(learning_rate), loss="mse", )
 
-# =============================================== MODEL ARCHITECTURE END ===========================================================
+# create two generators for training and validation
+train_gen = generate_next_batch()
+validation_gen = generate_next_batch()
 
-model.save("./model.h5")
+history = model.fit_generator(train_gen,
+                              samples_per_epoch=samples_per_epoch,
+                              nb_epoch=epochs,
+                              validation_data=validation_gen,
+                              nb_val_samples=number_of_validation_samples,
+                              verbose=1)
 
-### print the keys contained in the history object
-print(history_object.history.keys())
+# finally save our model and weights
+delete_file(model_name)
+delete_file(weights_name)
 
-### plot the training and validation loss for each epoch
-plt.plot(history_object.history['loss'])
-plt.plot(history_object.history['val_loss'])
-plt.title('model mean squared error loss')
-plt.ylabel('mean squared error loss')
-plt.xlabel('epoch')
-plt.legend(['training set', 'validation set'], loc='upper right')
-plt.show()
+json_string = model.to_json()
+with open(model_name, 'w') as outfile:
+    json.dump(json_string, outfile)
 
-print("training completed")
+model.save_weights(weights_name)
